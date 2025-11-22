@@ -178,23 +178,32 @@ def find_best_loop(G, start_node, target_dist, iterations=30):
 @app.post("/api/v1/generate_route", response_model=RouteResponse)
 def generate_route(request: RouteRequest):
     try:
-        G = get_graph_data(request.lat, request.lng)
-        start_node = ox.nearest_nodes(G, [request.lng], [request.lat])[0]
+        # 1. Tăng bán kính tìm kiếm lên 2km (để dễ tìm đường 5km hơn)
+        G = get_graph_data(request.lat, request.lng, dist=2000) 
         
-        path_nodes, length = find_best_loop(G, start_node, request.distance_km * 1000)
+        # ... (code tìm start_node giữ nguyên) ...
+        start_node = ox.nearest_nodes(G, [request.lng], [request.lat])[0]
+
+        # 2. Tăng số lần thử lên 30 (nếu server chịu được)
+        path_nodes, length = find_best_loop_route(
+            G, 
+            start_node, 
+            request.distance_km * 1000, 
+            num_iterations=30, 
+            max_nodes_per_walk=50 # Tăng khả năng đi xa hơn
+        )
         
         if not path_nodes:
-             raise HTTPException(status_code=404, detail="Không tìm thấy đường chạy.")
+             # Đây là lỗi dự kiến, trả về 404
+             raise HTTPException(status_code=404, detail="Không tìm thấy đường chạy phù hợp ở khu vực này. Hãy thử giảm quãng đường hoặc chọn vị trí khác.")
 
-        # Chuyển đổi sang tọa độ chi tiết (bám đường)
         coords = convert_path_to_coords(G, path_nodes)
         
         return RouteResponse(path=coords, actual_distance_km=round(length/1000, 2))
 
+    # === SỬA ĐOẠN NÀY ===
+    except HTTPException as he:
+        raise he # Nếu là lỗi HTTP (như 404 ở trên), ném ra ngay, không bọc lại
     except Exception as e:
-        print(f"Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/")
-def read_root():
-    return {"message": "WeRun AI Backend is Running!"}
+        print(f"Lỗi không mong muốn: {e}")
+        raise HTTPException(status_code=500, detail=f"Lỗi Server: {str(e)}")
