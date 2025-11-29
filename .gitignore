@@ -9,3 +9,5 @@ __pycache__/
 # File IDE
 .vscode/
 .idea/
+
+.env
